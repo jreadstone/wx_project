@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>微信消息监控</title>
+    <meta charset="utf-8">
+    <style>
+        .message-container {
+            margin: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f5f5f5;
+        }
+        .received {
+            border-left: 4px solid #4CAF50;
+        }
+        .reply {
+            border-left: 4px solid #2196F3;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>微信消息监控</h1>
+    <div class="message-container" id="messageContainer">
+    </div>
+
+    <script>
+        function updateMessages() {
+            fetch('/wx/history')
+                .then(response => response.json())
+                .then(messages => {
+                    const container = document.getElementById('messageContainer');
+                    container.innerHTML = '';
+                    
+                    messages.forEach(msg => {
+                        const msgDiv = document.createElement('div');
+                        msgDiv.className = `message ${msg.type}`;
+                        
+                        const time = document.createElement('p');
+                        time.textContent = `时间: ${msg.timestamp}`;
+                        
+                        const type = document.createElement('p');
+                        type.textContent = `类型: ${msg.type === 'received' ? '接收' : '回复'}`;
+                        
+                        const content = document.createElement('pre');
+                        content.textContent = `内容: ${JSON.stringify(msg.content, null, 2)}`;
+                        
+                        const raw = document.createElement('pre');
+                        raw.textContent = `原始数据: ${msg.raw}`;
+                        
+                        msgDiv.appendChild(time);
+                        msgDiv.appendChild(type);
+                        msgDiv.appendChild(content);
+                        msgDiv.appendChild(raw);
+                        
+                        container.appendChild(msgDiv);
+                    });
+                })
+                .catch(error => console.error('获取消息历史失败:', error));
+        }
+
+        // 每5秒更新一次消息
+        setInterval(updateMessages, 5000);
+        updateMessages();
+    </script>
+</body>
+</html> 
