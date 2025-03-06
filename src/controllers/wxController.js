@@ -1,5 +1,6 @@
 const wxService = require('../services/wxService');
 const encryptionModel = require('../models/encryptionModel');
+const config = require('../../config');
 
 class WxController {
     async handleMessage(req, res) {
@@ -88,6 +89,21 @@ class WxController {
             });
         } catch (err) {
             console.error('获取当前密钥失败:', err);
+            res.status(500).json({
+                success: false,
+                error: err.message
+            });
+        }
+    }
+
+    async getEncryptConfig(req, res) {
+        try {
+            res.json({
+                success: true,
+                encryptMode: config.wx.encryptMode
+            });
+        } catch (err) {
+            console.error('获取加密配置失败:', err);
             res.status(500).json({
                 success: false,
                 error: err.message
