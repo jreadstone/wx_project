@@ -15,12 +15,8 @@ app.use(express.static('public'));
 app.use('/files', express.static(path.join(__dirname, 'files')));
 
 // 微信相关路由
-app.use('/wx', wxRouter);
+app.use('/', wxRouter);
 
-// 主页路由
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
 
 // 启动服务器
 app.listen(port, '0.0.0.0', () => {

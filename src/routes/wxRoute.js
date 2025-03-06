@@ -17,6 +17,11 @@ router.get('/encryption', (req, res) => {
     res.sendFile(path.join(__dirname, '../../public/encryption.html'));
 });
 
+// 加密配置管理页面
+router.get('/index', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../public/index.html'));
+});
+
 // 获取加密配置信息
 router.get('/encryption/config', wxController.getEncryptConfig.bind(wxController));
 
