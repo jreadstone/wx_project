@@ -23,6 +23,6 @@ app.get('/', (req, res) => {
 });
 
 // 启动服务器
-app.listen(port, () => {
-  console.log(`服务器运行在 http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`服务器运行在 ${port}`);
 }); 
