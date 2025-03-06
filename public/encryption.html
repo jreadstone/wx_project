@@ -47,6 +47,24 @@
             background: #f2dede;
             color: #a94442;
         }
+        .copy-button {
+            background: #2196F3;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+        .copy-button:hover {
+            background: #1976D2;
+        }
+        .key-container {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -57,7 +75,10 @@
         <p id="currentMode">加载中...</p>
         
         <h2>当前 EncodingAESKey</h2>
-        <div id="currentKey" class="key-display">加载中...</div>
+        <div class="key-container">
+            <div id="currentKey" class="key-display">加载中...</div>
+            <button id="copyBtn" class="copy-button">复制密钥</button>
+        </div>
         
         <button id="generateBtn" class="button">生成新的 EncodingAESKey</button>
         <div id="status" class="status" style="display: none;"></div>
@@ -68,7 +89,30 @@
             const keyDisplay = document.getElementById('currentKey');
             const modeDisplay = document.getElementById('currentMode');
             const generateBtn = document.getElementById('generateBtn');
+            const copyBtn = document.getElementById('copyBtn');
             const status = document.getElementById('status');
+
+            // 复制功能
+            copyBtn.addEventListener('click', async function() {
+                try {
+                    const key = keyDisplay.textContent;
+                    await navigator.clipboard.writeText(key);
+                    showStatus('密钥已复制到剪贴板！', true);
+                } catch (err) {
+                    // 降级方案
+                    const textArea = document.createElement('textarea');
+                    textArea.value = keyDisplay.textContent;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        showStatus('密钥已复制到剪贴板！', true);
+                    } catch (err) {
+                        showStatus('复制失败，请手动复制', false);
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
 
             // 加载配置信息
             async function loadConfig() {

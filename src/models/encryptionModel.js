@@ -34,10 +34,12 @@ class EncryptionModel {
 
     generateEncodingAESKey() {
         // 生成43位字符串，包含a-z,A-Z,0-9
-        return crypto.randomBytes(32)
-            .toString('base64')
-            .replace(/[^a-zA-Z0-9]/g, '')
-            .slice(0, 43);
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let key = '';
+        for (let i = 0; i < 43; i++) {
+            key += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return key;
     }
 
     async saveToFile() {
