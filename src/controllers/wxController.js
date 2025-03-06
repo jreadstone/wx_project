@@ -1,6 +1,8 @@
 const wxService = require('../services/wxService');
 const encryptionModel = require('../models/encryptionModel');
 const config = require('../../config');
+const wxAuthService = require('../services/wxAuthService');
+const logService = require('../services/logService');
 
 class WxController {
     async handleMessage(req, res) {
@@ -108,6 +110,46 @@ class WxController {
                 success: false,
                 error: err.message
             });
+        }
+    }
+
+    async verifyServer(req, res) {
+        try {
+            const {
+                signature,
+                timestamp,
+                nonce,
+                echostr
+            } = req.query;
+
+            // 记录验证请求
+            await logService.log('auth_request', '收到微信验证请求', {
+                signature,
+                timestamp,
+                nonce
+            });
+
+            if (!signature || !timestamp || !nonce) {
+                await logService.log('auth_error', '验证参数不完整');
+                return res.status(400).send('参数不完整');
+            }
+
+            const isValid = wxAuthService.verifySignature(signature, timestamp, nonce);
+            await logService.log('auth_result', isValid ? '验证成功' : '验证失败', {
+                signature,
+                timestamp,
+                nonce,
+                isValid
+            });
+
+            if (isValid) {
+                return res.send(echostr);
+            } else {
+                return res.status(401).send('签名验证失败');
+            }
+        } catch (err) {
+            await logService.log('auth_error', '验证处理失败', { error: err.message });
+            res.status(500).send('服务器错误');
         }
     }
 }

@@ -3,6 +3,9 @@ const router = express.Router();
 const wxController = require('../controllers/wxController');
 const path = require('path');
 
+// 微信服务器验证接口
+router.get('/', wxController.verifyServer.bind(wxController));
+
 // 处理微信服务器的消息推送
 router.post('/', wxController.handleMessage.bind(wxController));
 
