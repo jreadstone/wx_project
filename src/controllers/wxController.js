@@ -3,6 +3,7 @@ const encryptionModel = require('../models/encryptionModel');
 const config = require('../../config');
 const wxAuthService = require('../services/wxAuthService');
 const logService = require('../services/logService');
+const tokenService = require('../services/tokenService');
 
 class WxController {
     async handleMessage(req, res) {
@@ -122,34 +123,71 @@ class WxController {
                 echostr
             } = req.query;
 
-            // 记录验证请求
-            await logService.log('auth_request', '收到微信验证请求', {
-                signature,
-                timestamp,
-                nonce
+            // 记录收到的请求
+            await logService.log('wx_verify_request', '收到微信验证请求', {
+                url: req.url,
+                query: req.query,
+                headers: req.headers
             });
 
+            // 检查配置的token
+            await logService.log('wx_token_check', '当前配置的Token', {
+                configuredToken: config.wx.token
+            });
+
+            // 检查必要参数
             if (!signature || !timestamp || !nonce) {
-                await logService.log('auth_error', '验证参数不完整');
-                return res.status(400).send('参数不完整');
+                const missingParams = [];
+                if (!signature) missingParams.push('signature');
+                if (!timestamp) missingParams.push('timestamp');
+                if (!nonce) missingParams.push('nonce');
+
+                await logService.log('wx_verify_error', '参数不完整', {
+                    missingParams
+                });
+
+                return res.status(400).send('缺少参数: ' + missingParams.join(', '));
             }
 
-            const isValid = wxAuthService.verifySignature(signature, timestamp, nonce);
-            await logService.log('auth_result', isValid ? '验证成功' : '验证失败', {
-                signature,
-                timestamp,
-                nonce,
-                isValid
+            // 验证签名
+            const isValid = await wxAuthService.verifySignature(signature, timestamp, nonce);
+
+            // 记录验证结果
+            await logService.log('wx_verify_result', '验证结果', {
+                isValid,
+                echostr: echostr || ''
             });
 
             if (isValid) {
+                console.log('微信服务器验证成功，返回echostr:', echostr);
                 return res.send(echostr);
             } else {
+                console.log('微信服务器验证失败');
                 return res.status(401).send('签名验证失败');
             }
         } catch (err) {
-            await logService.log('auth_error', '验证处理失败', { error: err.message });
+            await logService.log('wx_verify_error', '验证处理异常', {
+                error: err.message,
+                stack: err.stack
+            });
+            console.error('处理微信验证请求失败:', err);
             res.status(500).send('服务器错误');
+        }
+    }
+
+    async getAccessToken(req, res) {
+        try {
+            const tokenData = await tokenService.getAccessToken();
+            res.json({
+                success: true,
+                ...tokenData
+            });
+        } catch (err) {
+            console.error('获取access_token失败:', err);
+            res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     }
 }

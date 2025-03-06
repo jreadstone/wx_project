@@ -14,13 +14,19 @@ class LogService {
             data
         };
 
+        const logText = JSON.stringify(logEntry, null, 2);
+
         try {
             await fs.mkdir(path.dirname(this.logPath), { recursive: true });
             await fs.appendFile(
                 this.logPath,
-                JSON.stringify(logEntry) + '\n',
+                logText + '\n' + '-'.repeat(80) + '\n',
                 'utf8'
             );
+
+            // 同时在控制台输出
+            console.log('\n[WX_LOG]', message);
+            console.log(logText);
         } catch (err) {
             console.error('写入日志失败:', err);
         }

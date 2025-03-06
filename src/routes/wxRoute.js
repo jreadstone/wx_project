@@ -26,4 +26,7 @@ router.get('/encryption/current', wxController.getCurrentKey.bind(wxController))
 // 生成新密钥
 router.post('/encryption/generate', wxController.generateNewKey.bind(wxController));
 
+// 获取access_token
+router.get('/access_token', wxController.getAccessToken.bind(wxController));
+
 module.exports = router; 
