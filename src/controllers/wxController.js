@@ -62,14 +62,14 @@ class WxController {
                     response: responseMessage
                 };
 
-                logService.log('info', '准备写入日志条目:', { 
+                /*logService.log('info', '准备写入日志条目:', { 
                     filePath,
                     hasResponse: !!responseMessage
-                });
+                });*/
 
                 try {
                     fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
-                    logService.log('info', '日志条目写入文件成功:', { filePath });
+                    //logService.log('info', '日志条目写入文件成功:', { filePath });
                 } catch (writeErr) {
                     logService.log('error', '将日志条目写入文件失败:', { error: writeErr });
                 }
@@ -92,36 +92,43 @@ class WxController {
         const defaultMessage = '你发送的消息已经收到，稍后将进行处理。';
         const apiKey = 'sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a';
         
+        // 获取用户消息内容
+        const userContent = message.Content[0];
+        
         // 记录用户发送的消息内容
         logService.log('info', '准备处理用户消息:', { 
-            content: message.Content[0],
+            content: userContent,
             fromUser: toUser,
             toUser: fromUser
+        });
+
+        // 根据消息内容选择模型
+        const needsSearch = userContent.includes('联网') || userContent.includes('在线');
+        const modelName = needsSearch ? 'deepseek-r1-search' : 'deepseek-reasoner';
+        
+        logService.log('info', `根据消息内容选择模型: ${modelName}`, { 
+            needsSearch,
+            keywords: needsSearch ? '包含"联网"或"在线"关键词' : '不包含特定关键词'
         });
 
         try {
             // 记录准备发送到OpenAI的请求数据
             const requestData = {
-                model: 'deepseek-reasoner',
+                model: modelName,
                 messages: [
-                    { role: 'user', content: message.Content[0] }
+                    { role: 'user', content: userContent }
                 ],
                 max_tokens: 8000,
                 temperature: 0.3,
                 stream: false
             };
             
-            logService.log('info', '准备调用OpenAI接口:', { 
-                endpoint: openaiEndpoint,
-                requestData: requestData,
-                headers: {
-                    'Authorization': 'Bearer sk-***' // 隐藏实际API Key
-                }
-            });
-
             // 记录发送请求的时间
             const startTime = Date.now();
-            logService.log('info', '开始调用OpenAI接口', { timestamp: new Date().toISOString() });
+            logService.log('info', '开始调用OpenAI接口', { 
+                timestamp: new Date().toISOString(),
+                model: modelName
+            });
             
             // 调用OpenAI接口处理消息内容
             const openaiResponse = await axios.post(openaiEndpoint, requestData, {
@@ -138,7 +145,8 @@ class WxController {
                 elapsedTime: `${endTime - startTime}ms`,
                 timestamp: new Date().toISOString(),
                 status: openaiResponse.status,
-                statusText: openaiResponse.statusText
+                statusText: openaiResponse.statusText,
+                model: modelName
             });
 
             // 记录OpenAI的响应数据
@@ -169,7 +177,10 @@ class WxController {
 
             // 处理OpenAI的响应内容
             const content = openaiResponse.data.choices[0].message.content || defaultMessage;
-            logService.log('info', '最终处理的响应内容:', { content });
+            logService.log('info', '最终处理的响应内容:', { 
+                content,
+                model: modelName
+            });
             
             // 构建XML响应
             const xmlResponse = `
@@ -182,11 +193,10 @@ class WxController {
                 </xml>
             `;
             
-            logService.log('info', '构建的XML响应:', { xmlResponse });
             return xmlResponse;
         } catch (error) {
             // 详细记录错误信息
-            logService.log('error', '调用OpenAI接口失败:', { 
+            logService.log('error', `调用OpenAI接口(${modelName})失败:`, { 
                 message: error.message,
                 stack: error.stack,
                 code: error.code,
