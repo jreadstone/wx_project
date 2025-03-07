@@ -11,49 +11,68 @@ const { parseString } = require('xml2js');
 
 class WxController {
     async handleMessage(req, res) {
-        const xmlData = req.body;
-        const timestamp = new Date();
-        const dateStr = timestamp.toISOString().split('T')[0].replace(/-/g, '');
-        const hourStr = timestamp.getHours().toString().padStart(2, '0');
-        const dirPath = path.join(__dirname, '../../data', dateStr);
-        const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
+        let xmlData = '';
+        req.on('data', (chunk) => {
+            xmlData += chunk.toString();
+        });
 
-        logService.log('info', 'Received message at:', { timestamp });
-        logService.log('info', 'Directory path:', { dirPath });
-        logService.log('info', 'File path:', { filePath });
+        req.on('end', async () => {
+            logService.log('info', '接收的原始 XML 数据:', { xmlData });
 
-        if (!fs.existsSync(dirPath)) {
-            logService.log('info', 'Directory does not exist, creating:', { dirPath });
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-        logService.log('info', 'xmlData:', { xmlData });
-        parseString(xmlData, (err, result) => {
-            if (err) {
-                logService.log('error', 'Failed to parse XML:', { error: err });
-                res.status(500).send('Internal Server Error');
+            if (!xmlData) {
+                logService.log('error', '接收到的 XML 数据为空');
+                res.status(400).send('Bad Request: No XML Data');
                 return;
             }
 
-            const message = result.xml;
-            const responseMessage = this.createResponseMessage(message);
+            parseString(xmlData, (err, result) => {
+                if (err) {
+                    logService.log('error', '解析 XML 失败:', { error: err });
+                    res.status(500).send('Internal Server Error');
+                    return;
+                }
 
-            const logEntry = {
-                timestamp: timestamp.toISOString(),
-                request: message,
-                response: responseMessage
-            };
+                const message = result.xml;
+                const responseMessage = this.createResponseMessage(message);
 
-            logService.log('info', 'Log entry:', { logEntry });
+                // 定义文件存储路径和名称
+                const timestamp = new Date();
+                const dateStr = timestamp.toISOString().split('T')[0].replace(/-/g, '');
+                const hourStr = timestamp.getHours().toString().padStart(2, '0');
+                const dirPath = path.join(__dirname, '../../data', dateStr);
+                const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
 
-            try {
-                fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
-                logService.log('info', 'Log entry written to file:', { filePath });
-            } catch (writeErr) {
-                logService.log('error', 'Failed to write log entry to file:', { error: writeErr });
-            }
+                if (!fs.existsSync(dirPath)) {
+                    logService.log('info', '目录不存在，创建目录:', { dirPath });
+                    fs.mkdirSync(dirPath, { recursive: true });
+                }
 
-            res.set('Content-Type', 'application/xml');
-            res.send(responseMessage);
+                // 日志条目
+                const logEntry = {
+                    timestamp: timestamp.toISOString(),
+                    request: message,
+                    response: responseMessage
+                };
+
+                logService.log('info', '日志条目:', { logEntry });
+
+                try {
+                    fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
+                    logService.log('info', '日志条目写入文件成功:', { filePath });
+                } catch (writeErr) {
+                    logService.log('error', '将日志条目写入文件失败:', { error: writeErr });
+                }
+
+                res.set('Content-Type', 'application/xml');
+                res.send(responseMessage);
+            });
+        });
+
+        logService.log('info', '收到的请求信息', {
+            method: req.method,
+            headers: req.headers,
+            contentType: req.headers['content-type'],
+            body: req.body,
         });
     }
 
@@ -157,61 +176,33 @@ class WxController {
 
     async verifyServer(req, res) {
         try {
-            const {
+            const { signature, timestamp, nonce, echostr } = req.query;
+            const token = config.wx.token;
+            const shasum = crypto.createHash('sha1');
+            const str = [token, timestamp, nonce].sort().join('');
+            shasum.update(str);
+            const shaResult = shasum.digest('hex');
+
+            logService.log('info', '验证服务器请求', {
                 signature,
+                shaResult,
                 timestamp,
-                nonce,
-                echostr
-            } = req.query;
-
-            // 记录收到的请求
-            await logService.log('info', '收到微信验证请求', {
-                url: req.url,
-                query: req.query,
-                headers: req.headers
+                nonce
             });
 
-            // 检查配置的token
-            await logService.log('info', '当前配置的Token', {
-                configuredToken: config.wx.token
-            });
-
-            // 检查必要参数
-            if (!signature || !timestamp || !nonce) {
-                const missingParams = [];
-                if (!signature) missingParams.push('signature');
-                if (!timestamp) missingParams.push('timestamp');
-                if (!nonce) missingParams.push('nonce');
-
-                await logService.log('error', '参数不完整', {
-                    missingParams
-                });
-
-                return res.status(400).send('缺少参数: ' + missingParams.join(', '));
-            }
-
-            // 验证签名
-            const isValid = await wxAuthService.verifySignature(signature, timestamp, nonce);
-
-            // 记录验证结果
-            await logService.log('info', '验证结果', {
-                isValid,
-                echostr: echostr || ''
-            });
-
-            if (isValid) {
-                logService.log('info', '微信服务器验证成功，返回echostr:', { echostr });
-                return res.send(echostr);
+            if (shaResult === signature) {
+                logService.log('info', '验证成功: 返回 echostr', { echostr });
+                res.send(echostr);
             } else {
-                logService.log('error', '微信服务器验证失败');
-                return res.status(401).send('签名验证失败');
+                logService.log('error', '验证失败: 签名不匹配', {
+                    signature,
+                    shaResult
+                });
+                res.status(401).send('Unauthorized');
             }
         } catch (err) {
-            await logService.log('error', '验证处理异常', {
-                error: err.message,
-                stack: err.stack
-            });
-            res.status(500).send('服务器错误');
+            logService.log('error', '验证过程出错', { error: err.message });
+            res.status(500).send('Internal Server Error');
         }
     }
 
