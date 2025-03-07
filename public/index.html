@@ -33,7 +33,7 @@
 
     <script>
         function updateMessages() {
-            fetch('/wx/history')
+            fetch('/history')
                 .then(response => response.json())
                 .then(messages => {
                     const container = document.getElementById('messageContainer');

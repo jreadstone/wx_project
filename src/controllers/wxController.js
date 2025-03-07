@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { parseString } = require('xml2js');
+const axios = require('axios');
 
 class WxController {
     async handleMessage(req, res) {
@@ -76,21 +77,55 @@ class WxController {
         });*/
     }
 
-    createResponseMessage(message) {
-        // 根据接收到的消息创建响应消息
+    async createResponseMessage(message) {
         const toUser = message.FromUserName[0];
         const fromUser = message.ToUserName[0];
-        const content = '欢迎开启公众号开发者模式';
+        const openaiEndpoint = 'https://api.vveai.com/v1/chat/completions'; // 替换为实际的OpenAI接口地址
+        const defaultMessage = '你发送的消息已经收到，稍后将进行处理。';
+        
+        try {
+            // 调用OpenAI接口处理消息内容
+            const openaiResponse = await axios.post(openaiEndpoint, {
+                model: 'deepseek-reasoner',
+                messages: [
+                    { role: 'user', content: message.Content[0] }
+                ],
+                max_tokens: 8000,
+                temperature: 0.3,
+                stream: false
+                // 如果有更多参数需要传递，请在这里添加
+            }, {
+                headers: {
+                    'Authorization': `Bearer sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a` // 替换为实际的OpenAI API密钥
+                },
+                timeout: 5000 // 设置超时时间
+            });
 
-        return `
-            <xml>
-                <ToUserName><![CDATA[${toUser}]]></ToUserName>
-                <FromUserName><![CDATA[${fromUser}]]></FromUserName>
-                <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
-                <MsgType><![CDATA[text]]></MsgType>
-                <Content><![CDATA[${content}]]></Content>
-            </xml>
-        `;
+            // 处理OpenAI的响应内容
+            const content = openaiResponse.data?.output || defaultMessage;
+            
+            return `
+                <xml>
+                    <ToUserName><![CDATA[${toUser}]]></ToUserName>
+                    <FromUserName><![CDATA[${fromUser}]]></FromUserName>
+                    <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
+                    <MsgType><![CDATA[text]]></MsgType>
+                    <Content><![CDATA[${content}]]></Content>
+                </xml>
+            `;
+        } catch (error) {
+            // 处理调用失败或超时的情况
+            logService.log('error', '调用OpenAI接口失败:', { error: error.message });
+            return `
+                <xml>
+                    <ToUserName><![CDATA[${toUser}]]></ToUserName>
+                    <FromUserName><![CDATA[${fromUser}]]></FromUserName>
+                    <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
+                    <MsgType><![CDATA[text]]></MsgType>
+                    <Content><![CDATA[${defaultMessage}]]></Content>
+                </xml>
+            `;
+        }
     }
 
     async getHistory(req, res) {
