@@ -18,18 +18,18 @@ class WxController {
         const dirPath = path.join(__dirname, '../../data', dateStr);
         const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
 
-        console.log('Received message at:', timestamp);
-        console.log('Directory path:', dirPath);
-        console.log('File path:', filePath);
+        logService.log('info', 'Received message at:', { timestamp });
+        logService.log('info', 'Directory path:', { dirPath });
+        logService.log('info', 'File path:', { filePath });
 
         if (!fs.existsSync(dirPath)) {
-            console.log('Directory does not exist, creating:', dirPath);
+            logService.log('info', 'Directory does not exist, creating:', { dirPath });
             fs.mkdirSync(dirPath, { recursive: true });
         }
 
         parseString(xmlData, (err, result) => {
             if (err) {
-                console.error('Failed to parse XML:', err);
+                logService.log('error', 'Failed to parse XML:', { error: err });
                 res.status(500).send('Internal Server Error');
                 return;
             }
@@ -43,13 +43,13 @@ class WxController {
                 response: responseMessage
             };
 
-            console.log('Log entry:', logEntry);
+            logService.log('info', 'Log entry:', { logEntry });
 
             try {
                 fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
-                console.log('Log entry written to file:', filePath);
+                logService.log('info', 'Log entry written to file:', { filePath });
             } catch (writeErr) {
-                console.error('Failed to write log entry to file:', writeErr);
+                logService.log('error', 'Failed to write log entry to file:', { error: writeErr });
             }
 
             res.set('Content-Type', 'application/xml');
@@ -116,7 +116,7 @@ class WxController {
                 key: newKey
             });
         } catch (err) {
-            console.error('生成新密钥失败:', err);
+            logService.log('error', '生成新密钥失败:', { error: err });
             res.status(500).json({
                 success: false,
                 error: err.message
@@ -132,7 +132,7 @@ class WxController {
                 key: key
             });
         } catch (err) {
-            console.error('获取当前密钥失败:', err);
+            logService.log('error', '获取当前密钥失败:', { error: err });
             res.status(500).json({
                 success: false,
                 error: err.message
@@ -147,7 +147,7 @@ class WxController {
                 encryptMode: config.wx.encryptMode
             });
         } catch (err) {
-            console.error('获取加密配置失败:', err);
+            logService.log('error', '获取加密配置失败:', { error: err });
             res.status(500).json({
                 success: false,
                 error: err.message
@@ -165,14 +165,14 @@ class WxController {
             } = req.query;
 
             // 记录收到的请求
-            await logService.log('wx_verify_request', '收到微信验证请求', {
+            await logService.log('info', '收到微信验证请求', {
                 url: req.url,
                 query: req.query,
                 headers: req.headers
             });
 
             // 检查配置的token
-            await logService.log('wx_token_check', '当前配置的Token', {
+            await logService.log('info', '当前配置的Token', {
                 configuredToken: config.wx.token
             });
 
@@ -183,7 +183,7 @@ class WxController {
                 if (!timestamp) missingParams.push('timestamp');
                 if (!nonce) missingParams.push('nonce');
 
-                await logService.log('wx_verify_error', '参数不完整', {
+                await logService.log('error', '参数不完整', {
                     missingParams
                 });
 
@@ -194,24 +194,23 @@ class WxController {
             const isValid = await wxAuthService.verifySignature(signature, timestamp, nonce);
 
             // 记录验证结果
-            await logService.log('wx_verify_result', '验证结果', {
+            await logService.log('info', '验证结果', {
                 isValid,
                 echostr: echostr || ''
             });
 
             if (isValid) {
-                console.log('微信服务器验证成功，返回echostr:', echostr);
+                logService.log('info', '微信服务器验证成功，返回echostr:', { echostr });
                 return res.send(echostr);
             } else {
-                console.log('微信服务器验证失败');
+                logService.log('error', '微信服务器验证失败');
                 return res.status(401).send('签名验证失败');
             }
         } catch (err) {
-            await logService.log('wx_verify_error', '验证处理异常', {
+            await logService.log('error', '验证处理异常', {
                 error: err.message,
                 stack: err.stack
             });
-            console.error('处理微信验证请求失败:', err);
             res.status(500).send('服务器错误');
         }
     }
@@ -224,7 +223,7 @@ class WxController {
                 ...tokenData
             });
         } catch (err) {
-            console.error('获取access_token失败:', err);
+            logService.log('error', '获取access_token失败:', { error: err });
             res.status(500).json({
                 success: false,
                 error: err.message
