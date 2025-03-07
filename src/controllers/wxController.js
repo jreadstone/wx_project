@@ -80,13 +80,20 @@ class WxController {
     async createResponseMessage(message) {
         const toUser = message.FromUserName[0];
         const fromUser = message.ToUserName[0];
-        const openaiEndpoint = 'https://api.vveai.com/v1/chat/completions'; // 替换为实际的OpenAI接口地址
+        const openaiEndpoint = 'https://api.vveai.com/v1/chat/completions';
         const defaultMessage = '你发送的消息已经收到，稍后将进行处理。';
-        const apiKey = 'sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a'; // 从环境变量中读取API Key
+        const apiKey = 'sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a';
+        
+        // 记录用户发送的消息内容
+        logService.log('info', '准备处理用户消息:', { 
+            content: message.Content[0],
+            fromUser: toUser,
+            toUser: fromUser
+        });
 
         try {
-            // 调用OpenAI接口处理消息内容
-            const openaiResponse = await axios.post(openaiEndpoint, {
+            // 记录准备发送到OpenAI的请求数据
+            const requestData = {
                 model: 'deepseek-reasoner',
                 messages: [
                     { role: 'user', content: message.Content[0] }
@@ -94,16 +101,67 @@ class WxController {
                 max_tokens: 8000,
                 temperature: 0.3,
                 stream: false
-            }, {
+            };
+            
+            logService.log('info', '准备调用OpenAI接口:', { 
+                endpoint: openaiEndpoint,
+                requestData: requestData,
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`, // 使用从环境变量读出的API Key
+                    'Authorization': 'Bearer sk-***' // 隐藏实际API Key
+                }
+            });
+
+            // 记录发送请求的时间
+            const startTime = Date.now();
+            logService.log('info', '开始调用OpenAI接口', { timestamp: new Date().toISOString() });
+            
+            // 调用OpenAI接口处理消息内容
+            const openaiResponse = await axios.post(openaiEndpoint, requestData, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json' 
                 },
                 timeout: 300000 // 设置超时时间为300秒
             });
+            
+            // 记录响应时间
+            const endTime = Date.now();
+            logService.log('info', 'OpenAI接口调用完成', { 
+                elapsedTime: `${endTime - startTime}ms`,
+                timestamp: new Date().toISOString(),
+                status: openaiResponse.status,
+                statusText: openaiResponse.statusText
+            });
+
+            // 记录OpenAI的响应数据
+            logService.log('info', 'OpenAI响应数据:', { 
+                data: openaiResponse.data,
+                headers: openaiResponse.headers
+            });
+
+            // 检查响应数据结构
+            if (!openaiResponse.data) {
+                logService.log('error', 'OpenAI响应数据为空');
+                return this.createDefaultResponse(toUser, fromUser, defaultMessage);
+            }
+
+            if (!openaiResponse.data.choices || !openaiResponse.data.choices.length) {
+                logService.log('error', 'OpenAI响应数据中没有choices字段或为空数组', { 
+                    data: openaiResponse.data 
+                });
+                return this.createDefaultResponse(toUser, fromUser, defaultMessage);
+            }
+
+            if (!openaiResponse.data.choices[0].message) {
+                logService.log('error', 'OpenAI响应数据中没有message字段', { 
+                    choice: openaiResponse.data.choices[0] 
+                });
+                return this.createDefaultResponse(toUser, fromUser, defaultMessage);
+            }
 
             // 处理OpenAI的响应内容
-            const content = openaiResponse.data?.choices[0]?.message?.content || defaultMessage;
+            const content = openaiResponse.data.choices[0].message.content || defaultMessage;
+            logService.log('info', '最终处理的响应内容:', { content });
             
             return `
                 <xml>
@@ -115,18 +173,33 @@ class WxController {
                 </xml>
             `;
         } catch (error) {
-            // 处理调用失败或超时的情况
-            logService.log('error', '调用OpenAI接口失败:', { error: error.message });
-            return `
-                <xml>
-                    <ToUserName><![CDATA[${toUser}]]></ToUserName>
-                    <FromUserName><![CDATA[${fromUser}]]></FromUserName>
-                    <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
-                    <MsgType><![CDATA[text]]></MsgType>
-                    <Content><![CDATA[${defaultMessage}]]></Content>
-                </xml>
-            `;
+            // 详细记录错误信息
+            logService.log('error', '调用OpenAI接口失败:', { 
+                message: error.message,
+                stack: error.stack,
+                code: error.code,
+                response: error.response ? {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data
+                } : 'No response'
+            });
+            
+            return this.createDefaultResponse(toUser, fromUser, defaultMessage);
         }
+    }
+
+    // 辅助方法：创建默认响应
+    createDefaultResponse(toUser, fromUser, content) {
+        return `
+            <xml>
+                <ToUserName><![CDATA[${toUser}]]></ToUserName>
+                <FromUserName><![CDATA[${fromUser}]]></FromUserName>
+                <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
+                <MsgType><![CDATA[text]]></MsgType>
+                <Content><![CDATA[${content}]]></Content>
+            </xml>
+        `;
     }
 
     async getHistory(req, res) {
