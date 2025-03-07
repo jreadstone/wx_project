@@ -27,6 +27,45 @@ class WxController {
             }
 
             try {
+                // 设置超时处理
+                const timeoutDuration = 4500; // 设置为4.5秒，留出一些处理时间的余地
+                let isResponseSent = false;
+                
+                // 创建超时处理器
+                const timeoutHandler = setTimeout(() => {
+                    if (!isResponseSent) {
+                        isResponseSent = true;
+                        logService.log('warn', '处理超时，发送默认响应');
+                        
+                        // 解析XML以获取必要的信息
+                        parseString(xmlData, (err, result) => {
+                            if (err) {
+                                logService.log('error', '解析XML失败，发送success响应', { error: err });
+                                res.send('success');
+                                return;
+                            }
+                            
+                            const message = result.xml;
+                            const toUser = message.FromUserName[0];
+                            const fromUser = message.ToUserName[0];
+                            const defaultMessage = '你发送的消息已经收到，稍后将进行处理。';
+                            
+                            // 构建默认响应XML
+                            const defaultResponse = this.createDefaultResponse(toUser, fromUser, defaultMessage);
+                            
+                            // 记录超时响应
+                            logService.log('info', '发送超时默认响应');
+                            
+                            // 发送响应
+                            res.set('Content-Type', 'application/xml');
+                            res.send(defaultResponse);
+                            
+                            // 使用logService保存消息日志
+                            logService.saveMessageLog(message, defaultResponse, "由于处理超时发送的默认响应");
+                        });
+                    }
+                }, timeoutDuration);
+                
                 // 使用 Promise 包装 parseString 以便使用 async/await
                 const parseXml = (xmlData) => {
                     return new Promise((resolve, reject) => {
@@ -40,43 +79,54 @@ class WxController {
                 const result = await parseXml(xmlData);
                 const message = result.xml;
                 
-                // 先获取响应消息，确保 OpenAI 调用完成
-                const responseMessage = await this.createResponseMessage(message);
-                
-                // 定义文件存储路径和名称
-                const timestamp = new Date();
-                const dateStr = timestamp.toISOString().split('T')[0].replace(/-/g, '');
-                const hourStr = timestamp.getHours().toString().padStart(2, '0');
-                const dirPath = path.join(__dirname, '../../data', dateStr);
-                const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
-
-                if (!fs.existsSync(dirPath)) {
-                    logService.log('info', '目录不存在，创建目录:', { dirPath });
-                    fs.mkdirSync(dirPath, { recursive: true });
-                }
-
-                // 日志条目 - 现在包含完整的响应消息
-                const logEntry = {
-                    timestamp: timestamp.toISOString(),
-                    request: message,
-                    response: responseMessage
+                // 异步处理消息并获取响应
+                const processMessageAsync = async () => {
+                    try {
+                        // 调用OpenAI获取响应
+                        const responseMessage = await this.createResponseMessage(message);
+                        
+                        // 如果响应尚未发送，则发送正常响应
+                        if (!isResponseSent) {
+                            clearTimeout(timeoutHandler); // 清除超时处理器
+                            isResponseSent = true;
+                            
+                            // 先发送响应，确保不会超时
+                            res.set('Content-Type', 'application/xml');
+                            res.send(responseMessage);
+                            logService.log('info', '成功发送完整响应');
+                            
+                            // 使用logService保存消息日志，异步执行
+                            logService.saveMessageLog(message, responseMessage);
+                        } else {
+                            // 如果响应已经发送（由于超时），则只记录日志
+                            logService.log('info', 'OpenAI响应已生成，但由于超时已发送默认响应');
+                            
+                            // 使用logService保存消息日志，包含说明
+                            logService.saveMessageLog(message, responseMessage, "此响应由于超时未发送给用户，用户收到了默认响应");
+                        }
+                    } catch (processErr) {
+                        logService.log('error', '处理消息时发生错误:', { error: processErr.message, stack: processErr.stack });
+                        
+                        // 如果响应尚未发送，则发送错误响应
+                        if (!isResponseSent) {
+                            clearTimeout(timeoutHandler); // 清除超时处理器
+                            isResponseSent = true;
+                            
+                            const defaultMessage = '处理消息时发生错误，请稍后再试。';
+                            const errorResponse = this.createDefaultResponse(message.FromUserName[0], message.ToUserName[0], defaultMessage);
+                            
+                            // 先发送响应
+                            res.set('Content-Type', 'application/xml');
+                            res.send(errorResponse);
+                            
+                            // 使用logService保存错误日志
+                            logService.saveErrorLog(message, processErr, errorResponse);
+                        }
+                    }
                 };
-
-                /*logService.log('info', '准备写入日志条目:', { 
-                    filePath,
-                    hasResponse: !!responseMessage
-                });*/
-
-                try {
-                    fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
-                    //logService.log('info', '日志条目写入文件成功:', { filePath });
-                } catch (writeErr) {
-                    logService.log('error', '将日志条目写入文件失败:', { error: writeErr });
-                }
-
-                // 设置响应头并发送响应
-                res.set('Content-Type', 'application/xml');
-                res.send(responseMessage);
+                
+                // 启动异步处理，但不等待它完成
+                processMessageAsync();
                 
             } catch (err) {
                 logService.log('error', '处理消息时发生错误:', { error: err.message, stack: err.stack });
