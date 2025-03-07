@@ -26,7 +26,7 @@ class WxController {
             logService.log('info', 'Directory does not exist, creating:', { dirPath });
             fs.mkdirSync(dirPath, { recursive: true });
         }
-
+        logService.log('info', 'xmlData:', { xmlData });
         parseString(xmlData, (err, result) => {
             if (err) {
                 logService.log('error', 'Failed to parse XML:', { error: err });
