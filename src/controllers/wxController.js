@@ -18,7 +18,12 @@ class WxController {
         const dirPath = path.join(__dirname, '../../data', dateStr);
         const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
 
+        console.log('Received message at:', timestamp);
+        console.log('Directory path:', dirPath);
+        console.log('File path:', filePath);
+
         if (!fs.existsSync(dirPath)) {
+            console.log('Directory does not exist, creating:', dirPath);
             fs.mkdirSync(dirPath, { recursive: true });
         }
 
@@ -38,7 +43,14 @@ class WxController {
                 response: responseMessage
             };
 
-            fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
+            console.log('Log entry:', logEntry);
+
+            try {
+                fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
+                console.log('Log entry written to file:', filePath);
+            } catch (writeErr) {
+                console.error('Failed to write log entry to file:', writeErr);
+            }
 
             res.set('Content-Type', 'application/xml');
             res.send(responseMessage);
