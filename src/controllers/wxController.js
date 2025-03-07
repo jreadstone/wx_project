@@ -54,7 +54,7 @@ class WxController {
                     response: responseMessage
                 };
 
-                logService.log('info', '日志条目:', { logEntry });
+                //logService.log('info', '日志条目:', { logEntry });
 
                 try {
                     fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
@@ -68,12 +68,12 @@ class WxController {
             });
         });
 
-        logService.log('info', '收到的请求信息', {
+        /*logService.log('info', '收到的请求信息', {
             method: req.method,
             headers: req.headers,
             contentType: req.headers['content-type'],
             body: req.body,
-        });
+        });*/
     }
 
     createResponseMessage(message) {

@@ -21,9 +21,5 @@ router.post('/encryption/generate', wxController.generateNewKey.bind(wxControlle
 // 访问令牌
 router.get('/access_token', wxController.getAccessToken.bind(wxController));
 
-// 页面路由放在最后
-router.get('/index', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../public/index.html'));
-});
 
 module.exports = router; 

@@ -22,6 +22,10 @@ app.use('/history', wxRouter);
 // 静态文件服务
 app.use('/static', express.static('public'));
 app.use('/files', express.static(path.join(__dirname, 'files')));
+// 页面路由放在最后
+app.get('/index', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/index.html'));
+});
 
 // 启动服务器
 app.listen(port, () => {
