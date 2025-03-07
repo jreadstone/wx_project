@@ -82,7 +82,8 @@ class WxController {
         const fromUser = message.ToUserName[0];
         const openaiEndpoint = 'https://api.vveai.com/v1/chat/completions'; // 替换为实际的OpenAI接口地址
         const defaultMessage = '你发送的消息已经收到，稍后将进行处理。';
-        
+        const apiKey = 'sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a'; // 从环境变量中读取API Key
+
         try {
             // 调用OpenAI接口处理消息内容
             const openaiResponse = await axios.post(openaiEndpoint, {
@@ -93,16 +94,16 @@ class WxController {
                 max_tokens: 8000,
                 temperature: 0.3,
                 stream: false
-                // 如果有更多参数需要传递，请在这里添加
             }, {
                 headers: {
-                    'Authorization': `Bearer sk-5AnmeYSzESU6VfgHC98590FeA2Ef412898B013523887E44a` // 替换为实际的OpenAI API密钥
+                    'Authorization': `Bearer ${apiKey}`, // 使用从环境变量读出的API Key
+                    'Content-Type': 'application/json' 
                 },
-                timeout: 5000 // 设置超时时间
+                timeout: 300000 // 设置超时时间为300秒
             });
 
             // 处理OpenAI的响应内容
-            const content = openaiResponse.data?.output || defaultMessage;
+            const content = openaiResponse.data?.choices[0]?.message?.content || defaultMessage;
             
             return `
                 <xml>
