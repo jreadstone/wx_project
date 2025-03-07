@@ -4,56 +4,85 @@ const config = require('../../config');
 const wxAuthService = require('../services/wxAuthService');
 const logService = require('../services/logService');
 const tokenService = require('../services/tokenService');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { parseString } = require('xml2js');
 
 class WxController {
     async handleMessage(req, res) {
-        let rawData = '';
-        req.on('data', chunk => {
-            rawData += chunk;
-        });
+        const xmlData = req.body;
+        const timestamp = new Date();
+        const dateStr = timestamp.toISOString().split('T')[0].replace(/-/g, '');
+        const hourStr = timestamp.getHours().toString().padStart(2, '0');
+        const dirPath = path.join(__dirname, '../../data', dateStr);
+        const filePath = path.join(dirPath, `${dateStr}-${hourStr}.log`);
 
-        req.on('end', async () => {
-            try {
-                // 解析接收到的消息
-                const result = await wxService.parseXmlMessage(rawData);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
 
-                // 保存接收到的消息
-                wxService.saveMessage({
-                    type: 'received',
-                    timestamp: new Date().toISOString(),
-                    content: result.xml,
-                    raw: rawData
-                });
-
-                // 创建回复消息
-                const replyMessage = wxService.createReplyMessage(
-                    result.xml.FromUserName[0],
-                    result.xml.ToUserName[0]
-                );
-
-                // 转换为XML
-                const replyXml = await wxService.buildXmlReply(replyMessage);
-
-                // 保存回复消息
-                wxService.saveMessage({
-                    type: 'reply',
-                    timestamp: new Date().toISOString(),
-                    content: replyMessage,
-                    raw: replyXml
-                });
-
-                res.type('application/xml');
-                res.send(replyXml);
-            } catch (err) {
-                console.error('处理消息失败:', err);
-                res.send('success');
+        parseString(xmlData, (err, result) => {
+            if (err) {
+                console.error('Failed to parse XML:', err);
+                res.status(500).send('Internal Server Error');
+                return;
             }
+
+            const message = result.xml;
+            const responseMessage = this.createResponseMessage(message);
+
+            const logEntry = {
+                timestamp: timestamp.toISOString(),
+                request: message,
+                response: responseMessage
+            };
+
+            fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
+
+            res.set('Content-Type', 'application/xml');
+            res.send(responseMessage);
         });
     }
 
-    getHistory(req, res) {
-        const history = wxService.getMessageHistory();
-        res.json(history);
+    createResponseMessage(message) {
+        // 根据接收到的消息创建响应消息
+        const toUser = message.FromUserName[0];
+        const fromUser = message.ToUserName[0];
+        const content = '欢迎开启公众号开发者模式';
+
+        return `
+            <xml>
+                <ToUserName><![CDATA[${toUser}]]></ToUserName>
+                <FromUserName><![CDATA[${fromUser}]]></FromUserName>
+                <CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>
+                <MsgType><![CDATA[text]]></MsgType>
+                <Content><![CDATA[${content}]]></Content>
+            </xml>
+        `;
+    }
+
+    async getHistory(req, res) {
+        const dataDir = path.join(__dirname, '../../data');
+        const files = fs.readdirSync(dataDir).sort().reverse();
+
+        for (const dateDir of files) {
+            const dateDirPath = path.join(dataDir, dateDir);
+            if (fs.statSync(dateDirPath).isDirectory()) {
+                const logFiles = fs.readdirSync(dateDirPath).sort().reverse();
+                for (const logFile of logFiles) {
+                    const logFilePath = path.join(dateDirPath, logFile);
+                    const logEntries = fs.readFileSync(logFilePath, 'utf-8').trim().split('\n');
+                    if (logEntries.length > 0) {
+                        const latestEntry = logEntries[logEntries.length - 1];
+                        res.json(JSON.parse(latestEntry));
+                        return;
+                    }
+                }
+            }
+        }
+
+        res.status(404).send('No history found');
     }
 
     async showEncryptionPage(req, res) {
