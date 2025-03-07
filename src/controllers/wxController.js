@@ -26,16 +26,23 @@ class WxController {
                 return;
             }
 
-            parseString(xmlData, (err, result) => {
-                if (err) {
-                    logService.log('error', '解析 XML 失败:', { error: err });
-                    res.status(500).send('Internal Server Error');
-                    return;
-                }
+            try {
+                // 使用 Promise 包装 parseString 以便使用 async/await
+                const parseXml = (xmlData) => {
+                    return new Promise((resolve, reject) => {
+                        parseString(xmlData, (err, result) => {
+                            if (err) reject(err);
+                            else resolve(result);
+                        });
+                    });
+                };
 
+                const result = await parseXml(xmlData);
                 const message = result.xml;
-                const responseMessage = this.createResponseMessage(message);
-
+                
+                // 先获取响应消息，确保 OpenAI 调用完成
+                const responseMessage = await this.createResponseMessage(message);
+                
                 // 定义文件存储路径和名称
                 const timestamp = new Date();
                 const dateStr = timestamp.toISOString().split('T')[0].replace(/-/g, '');
@@ -48,14 +55,17 @@ class WxController {
                     fs.mkdirSync(dirPath, { recursive: true });
                 }
 
-                // 日志条目
+                // 日志条目 - 现在包含完整的响应消息
                 const logEntry = {
                     timestamp: timestamp.toISOString(),
                     request: message,
                     response: responseMessage
                 };
 
-                //logService.log('info', '日志条目:', { logEntry });
+                logService.log('info', '准备写入日志条目:', { 
+                    filePath,
+                    hasResponse: !!responseMessage
+                });
 
                 try {
                     fs.appendFileSync(filePath, JSON.stringify(logEntry) + '\n');
@@ -64,17 +74,15 @@ class WxController {
                     logService.log('error', '将日志条目写入文件失败:', { error: writeErr });
                 }
 
+                // 设置响应头并发送响应
                 res.set('Content-Type', 'application/xml');
                 res.send(responseMessage);
-            });
+                
+            } catch (err) {
+                logService.log('error', '处理消息时发生错误:', { error: err.message, stack: err.stack });
+                res.status(500).send('Internal Server Error');
+            }
         });
-
-        /*logService.log('info', '收到的请求信息', {
-            method: req.method,
-            headers: req.headers,
-            contentType: req.headers['content-type'],
-            body: req.body,
-        });*/
     }
 
     async createResponseMessage(message) {
@@ -163,7 +171,8 @@ class WxController {
             const content = openaiResponse.data.choices[0].message.content || defaultMessage;
             logService.log('info', '最终处理的响应内容:', { content });
             
-            return `
+            // 构建XML响应
+            const xmlResponse = `
                 <xml>
                     <ToUserName><![CDATA[${toUser}]]></ToUserName>
                     <FromUserName><![CDATA[${fromUser}]]></FromUserName>
@@ -172,6 +181,9 @@ class WxController {
                     <Content><![CDATA[${content}]]></Content>
                 </xml>
             `;
+            
+            logService.log('info', '构建的XML响应:', { xmlResponse });
+            return xmlResponse;
         } catch (error) {
             // 详细记录错误信息
             logService.log('error', '调用OpenAI接口失败:', { 
